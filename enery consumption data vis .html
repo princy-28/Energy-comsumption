@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Home Energy Consumption Dashboard</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f0f0f0;
+        }
+        
+        header {
+            background-color: #333;
+            color: white;
+            text-align: center;
+            padding: 1em;
+        }
+        
+        #dashboard-container {
+            display: flex;
+            justify-content: space-around;
+            align-items: flex-start;
+            flex-wrap: wrap;
+            padding: 2em;
+        }
+        
+        .widget {
+            background-color: #fff;
+            border-radius: 8px;
+            padding: 1em;
+            margin: 1em;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            flex: 1 1 300px;
+        }
+        
+        #energy-chart {
+            height: 300px;
+        }
+        
+        footer {
+            text-align: center;
+            padding: 1em;
+            background-color: #333;
+            color: white;
+        }
+    </style>
+</head>
+
+<body>
+    <header>
+        <h1>Home Energy Consumption Dashboard</h1>
+        <p>Monitor and optimize your home's energy usage for a sustainable future</p>
+    </header>
+
+    <div id="dashboard-container">
+        <div class="widget" id="energy-chart">
+            <!-- Energy Consumption Pie Chart will be rendered here -->
+            <canvas id="pie-chart"></canvas>
+        </div>
+        <div class="widget">
+            <h2>Energy Usage Summary</h2>
+            <p>Total Energy Consumption: <span id="total-consumption">0 kWh</span></p>
+        </div>
+        <div class="widget">
+            <h2>Energy Efficiency Tips</h2>
+            <ul>
+                <li>Turn off lights when not in use.</li>
+                <li>Use energy-efficient appliances.</li>
+                <li>Set thermostat to optimal temperature.</li>
+                <li>Unplug devices when fully charged.</li>
+                <li>Install energy-efficient light bulbs.</li>
+                <!-- Add more tips as needed -->
+            </ul>
+        </div>
+        <div class="widget">
+            <h2>Monthly Energy Trends</h2>
+            <p>Understand your monthly energy consumption patterns to make informed decisions.</p>
+            <select id="selectYear" onchange="updateChartByYear()">
+                <!-- Unique years will be populated dynamically -->
+            </select>
+            <canvas id="monthly-chart"></canvas>
+        </div>
+    </div>
+
+    <footer>
+        <p>&copy; 2024 Home Energy Dashboard</p>
+    </footer>
+
+    <!-- Include xlsx library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.16.9/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        let energyData; // Declare energyData globally
+        let monthMap; // Declare monthMap globally
+
+        document.addEventListener('DOMContentLoaded', function() {
+            // Read data from Excel file
+            fetch('energy consumption.xlsx')
+                .then(response => response.arrayBuffer())
+                .then(data => {
+                    const workbook = XLSX.read(new Uint8Array(data), {
+                        type: 'array'
+                    });
+                    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+                    energyData = XLSX.utils.sheet_to_json(sheet);
+
+                    // Convert month names to month indices
+                    monthMap = {
+                        'January': 0,
+                        'February': 1,
+                        'March': 2,
+                        'April': 3,
+                        'May': 4,
+                        'June': 5,
+                        'July': 6,
+                        'August': 7,
+                        'September': 8,
+                        'October': 9,
+                        'November': 10,
+                        'December': 11,
+                    };
+
+                    energyData.forEach(entry => {
+                        entry.Month = monthMap[entry.Month];
+                    });
+
+                    const uniqueYears = [...new Set(energyData.map(entry => entry.Year))];
+                    populateYearDropdown(uniqueYears);
+                    updatePieChart();
+                    updateTotalConsumption();
+                });
+        });
+
+        function populateYearDropdown(uniqueYears) {
+            const selectYear = document.getElementById('selectYear');
+            uniqueYears.forEach(year => {
+                const option = document.createElement('option');
+                option.value = year;
+                option.text = year;
+                selectYear.add(option);
+            });
+        }
+
+        function updatePieChart() {
+            const pastThreeMonthsData = energyData.slice(-3);
+            const pieChartCanvas = document.getElementById('pie-chart');
+            const ctxPie = pieChartCanvas.getContext('2d');
+
+            new Chart(ctxPie, {
+                type: 'pie',
+                data: {
+                    labels: pastThreeMonthsData.map(entry => Object.keys(monthMap).find(key => monthMap[key] === entry.Month)),
+                    datasets: [{
+                        data: pastThreeMonthsData.map(entry => entry['Energy Consumption']),
+                        backgroundColor: [
+                            'rgba(255, 99, 132, 0.7)',
+                            'rgba(54, 162, 235, 0.7)',
+                            'rgba(255, 206, 86, 0.7)',
+                        ],
+                    }]
+                },
+                options: {
+                    responsive: true,
+                }
+            });
+        }
+
+        function updateTotalConsumption() {
+            const totalConsumption = calculateTotalConsumption(energyData);
+            document.getElementById('total-consumption').innerText = totalConsumption + ' kWh';
+        }
+
+        function updateChartByYear() {
+            const selectedYear = document.getElementById('selectYear').value;
+            const filteredData = energyData.filter(entry => entry.Year == selectedYear);
+            updateMonthlyChart(filteredData, monthMap);
+        }
+
+        function updateMonthlyChart(energyData, monthMap) {
+            const monthlyChartCanvas = document.getElementById('monthly-chart');
+
+            // Destroy the existing chart if it exists
+            if (monthlyChartCanvas.chart) {
+                monthlyChartCanvas.chart.destroy();
+            }
+
+            const ctxMonthly = monthlyChartCanvas.getContext('2d');
+
+            const monthlyData = Array.from({
+                length: 12
+            }, (_, monthIndex) => {
+                const monthEntries = energyData.filter(entry => entry.Month === monthIndex);
+                const totalConsumption = monthEntries.reduce((total, entry) => total + entry['Energy Consumption'], 0);
+                return {
+                    month: monthIndex,
+                    data: monthEntries.map(entry => entry['Energy Consumption'])
+                };
+            });
+
+            monthlyChartCanvas.chart = new Chart(ctxMonthly, {
+                type: 'bar',
+                data: {
+                    labels: monthlyData.map(item => Object.keys(monthMap).find(key => monthMap[key] === item.month)),
+                    datasets: [{
+                        label: 'Monthly Consumption (kWh)',
+                        data: monthlyData.map(item => item.data.reduce((sum, value) => sum + value, 0)),
+                        backgroundColor: 'rgba(75, 192, 192, 0.5)',
+                        borderColor: 'rgba(75, 192, 192, 1)',
+                        borderWidth: 1,
+                    }]
+                },
+                options: {
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                        }
+                    }
+                }
+            });
+        }
+
+
+
+        new Chart(ctxMonthly, {
+            type: 'bar',
+            data: {
+                labels: monthlyData.map(item => Object.keys(monthMap).find(key => monthMap[key] === item.month)),
+                datasets: [{
+                    label: 'Monthly Consumption (kWh)',
+                    data: monthlyData.map(item => item.data.reduce((sum, value) => sum + value, 0)),
+                    backgroundColor: 'rgba(75, 192, 192, 0.5)',
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    borderWidth: 1,
+                }]
+            },
+            options: {
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                    }
+                }
+            }
+        });
+
+        function calculateTotalConsumption(data) {
+            return data.reduce((total, value) => total + value['Energy Consumption'], 0);
+        }
+    </script>
+
+</body>
+
+</html>
